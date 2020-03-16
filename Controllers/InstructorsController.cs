@@ -28,27 +28,28 @@ namespace ContosoUniversity.Controllers
                   .Include(i => i.OfficeAssignment)
                   .Include(i => i.CourseAssignments)
                     .ThenInclude(i => i.Course)
-                        .ThenInclude(i => i.Enrollments)
-                            .ThenInclude(i => i.Student)
-                  .Include(i => i.CourseAssignments)
-                    .ThenInclude(i => i.Course)
                         .ThenInclude(i => i.Department)
-                  .AsNoTracking()
                   .OrderBy(i => i.LastName)
                   .ToListAsync();
 
             if (id != null)
             {
                 ViewData["InstructorID"] = id.Value;
-                Instructor instructor = viewModel.Instructors.Single(i => i.ID == id.Value);
+                Instructor instructor = viewModel.Instructors.Where(
+                    i => i.ID == id.Value).Single();
                 viewModel.Courses = instructor.CourseAssignments.Select(s => s.Course);
             }
 
             if (courseID != null)
             {
                 ViewData["CourseID"] = courseID.Value;
-                viewModel.Enrollments = viewModel.Courses.Where(
-                    x => x.CourseID == courseID).Single().Enrollments;
+                var selectedCourse = viewModel.Courses.Where(x => x.CourseID == courseID).Single();
+                await _context.Entry(selectedCourse).Collection(x => x.Enrollments).LoadAsync();
+                foreach (Enrollment enrollment in selectedCourse.Enrollments)
+                {
+                    await _context.Entry(enrollment).Reference(x => x.Student).LoadAsync();
+                }
+                viewModel.Enrollments = selectedCourse.Enrollments;
             }
 
             return View(viewModel);
@@ -82,11 +83,9 @@ namespace ContosoUniversity.Controllers
         }
 
         // POST: Instructors/Create
-        // To protect from overposting attacks, please enable the specific properties you want to bind to, for 
-        // more details see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create([Bind("FirstMidName,HireDate,LastName,OfficeAssignment")] Instructor instructor, string[] selectedCourses)
+        public async Task<IActionResult> Create([Bind("FirstName,HireDate,LastName,OfficeAssignment")] Instructor instructor, string[] selectedCourses)
         {
             if (selectedCourses != null)
             {
@@ -104,7 +103,6 @@ namespace ContosoUniversity.Controllers
                 return RedirectToAction(nameof(Index));
             }
             PopulateAssignedCourseData(instructor);
-
             return View(instructor);
         }
 
@@ -113,14 +111,16 @@ namespace ContosoUniversity.Controllers
         {
             if (id == null)
             {
+                
                 return NotFound();
+                
             }
 
-             var instructor = await _context.Instructors
-             .Include(i => i.OfficeAssignment)
-              .Include(i => i.CourseAssignments).ThenInclude(i => i.Course)
-             .AsNoTracking()
-             .FirstOrDefaultAsync(m => m.ID == id);
+            var instructor = await _context.Instructors
+                .Include(i => i.OfficeAssignment)
+                .Include(i => i.CourseAssignments).ThenInclude(i => i.Course)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(m => m.ID == id);
             if (instructor == null)
             {
                 return NotFound();
@@ -128,6 +128,7 @@ namespace ContosoUniversity.Controllers
             PopulateAssignedCourseData(instructor);
             return View(instructor);
         }
+
         private void PopulateAssignedCourseData(Instructor instructor)
         {
             var allCourses = _context.Courses;
@@ -144,9 +145,11 @@ namespace ContosoUniversity.Controllers
             }
             ViewData["Courses"] = viewModel;
         }
+
         // POST: Instructors/Edit/5
         // To protect from overposting attacks, please enable the specific properties you want to bind to, for 
         // more details see http://go.microsoft.com/fwlink/?LinkId=317598.
+
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Edit(int? id, string[] selectedCourses)
@@ -159,8 +162,8 @@ namespace ContosoUniversity.Controllers
             var instructorToUpdate = await _context.Instructors
                 .Include(i => i.OfficeAssignment)
                 .Include(i => i.CourseAssignments)
-                .ThenInclude(i => i.Course)
-                .FirstOrDefaultAsync(s => s.ID == id);
+                    .ThenInclude(i => i.Course)
+                .FirstOrDefaultAsync(m => m.ID == id);
 
             if (await TryUpdateModelAsync<Instructor>(
                 instructorToUpdate,
@@ -175,6 +178,7 @@ namespace ContosoUniversity.Controllers
                 try
                 {
                     await _context.SaveChangesAsync();
+                  
                 }
                 catch (DbUpdateException /* ex */)
                 {
@@ -183,12 +187,15 @@ namespace ContosoUniversity.Controllers
                         "Try again, and if the problem persists, " +
                         "see your system administrator.");
                 }
+
+                
                 return RedirectToAction(nameof(Index));
             }
             UpdateInstructorCourses(selectedCourses, instructorToUpdate);
             PopulateAssignedCourseData(instructorToUpdate);
             return View(instructorToUpdate);
         }
+
         private void UpdateInstructorCourses(string[] selectedCourses, Instructor instructorToUpdate)
         {
             if (selectedCourses == null)
@@ -220,6 +227,7 @@ namespace ContosoUniversity.Controllers
                 }
             }
         }
+
         // GET: Instructors/Delete/5
         public async Task<IActionResult> Delete(int? id)
         {
@@ -243,16 +251,17 @@ namespace ContosoUniversity.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> DeleteConfirmed(int id)
         {
-            //var instructor = await _context.Instructors.FindAsync(id);
             Instructor instructor = await _context.Instructors
-            .Include(i => i.CourseAssignments)
-            .SingleAsync(i => i.ID == id);
+                .Include(i => i.CourseAssignments)
+                .SingleAsync(i => i.ID == id);
 
             var departments = await _context.Departments
                 .Where(d => d.InstructorID == id)
                 .ToListAsync();
             departments.ForEach(d => d.InstructorID = null);
+
             _context.Instructors.Remove(instructor);
+
             await _context.SaveChangesAsync();
             return RedirectToAction(nameof(Index));
         }

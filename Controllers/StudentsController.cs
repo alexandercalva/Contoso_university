@@ -21,16 +21,14 @@ namespace ContosoUniversity.Controllers
 
         // GET: Students
         public async Task<IActionResult> Index(
-      string sortOrder,
-      string currentFilter,
-      string searchString,
-      int? pageNumber)
+            string sortOrder,
+            string currentFilter,
+            string searchString,
+            int? pageNumber)
         {
             ViewData["CurrentSort"] = sortOrder;
-            ViewData["NameSortParm"] =
-                String.IsNullOrEmpty(sortOrder) ? "LastName_desc" : "";
-            ViewData["DateSortParm"] =
-                sortOrder == "EnrollmentDate" ? "EnrollmentDate_desc" : "EnrollmentDate";
+            ViewData["NameSortParm"] = String.IsNullOrEmpty(sortOrder) ? "name_desc" : "";
+            ViewData["DateSortParm"] = sortOrder == "Date" ? "date_desc" : "Date";
 
             if (searchString != null)
             {
@@ -45,39 +43,32 @@ namespace ContosoUniversity.Controllers
 
             var students = from s in _context.Students
                            select s;
-
             if (!String.IsNullOrEmpty(searchString))
             {
                 students = students.Where(s => s.LastName.Contains(searchString)
                                        || s.FirstName.Contains(searchString));
             }
-
-            if (string.IsNullOrEmpty(sortOrder))
+            switch (sortOrder)
             {
-                sortOrder = "LastName";
-            }
-
-            bool descending = false;
-            if (sortOrder.EndsWith("_desc"))
-            {
-                sortOrder = sortOrder.Substring(0, sortOrder.Length - 5);
-                descending = true;
-            }
-
-            if (descending)
-            {
-                students = students.OrderByDescending(e => EF.Property<object>(e, sortOrder));
-            }
-            else
-            {
-                students = students.OrderBy(e => EF.Property<object>(e, sortOrder));
+                case "name_desc":
+                    students = students.OrderByDescending(s => s.LastName);
+                    break;
+                case "Date":
+                    students = students.OrderBy(s => s.EnrollmentDate);
+                    break;
+                case "date_desc":
+                    students = students.OrderByDescending(s => s.EnrollmentDate);
+                    break;
+                default:
+                    students = students.OrderBy(s => s.LastName);
+                    break;
             }
 
             int pageSize = 3;
-            return View(await PaginatedList<Student>.CreateAsync(students.AsNoTracking(),
-                pageNumber ?? 1, pageSize));
+            return View(await PaginatedList<Student>.CreateAsync(students.AsNoTracking(), pageNumber ?? 1, pageSize));
         }
 
+        // GET: Students/Details/5
         public async Task<IActionResult> Details(int? id)
         {
             if (id == null)
@@ -86,10 +77,10 @@ namespace ContosoUniversity.Controllers
             }
 
             var student = await _context.Students
-                .Include(s => s.Enrollments)
-                    .ThenInclude(e => e.Course)
-                .AsNoTracking()
-                .FirstOrDefaultAsync(m => m.ID == id);
+                 .Include(s => s.Enrollments)
+                     .ThenInclude(e => e.Course)
+                 .AsNoTracking()
+                 .FirstOrDefaultAsync(m => m.ID == id);
 
             if (student == null)
             {
@@ -110,11 +101,12 @@ namespace ContosoUniversity.Controllers
         // more details see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create([Bind("EnrollmentDate,FirstMidName,LastName")] Student student)
+        public async Task<IActionResult> Create(
+            [Bind("EnrollmentDate,FirstName,LastName")] Student student)
         {
             try
             {
-                    if (ModelState.IsValid)
+                if (ModelState.IsValid)
                 {
                     _context.Add(student);
                     await _context.SaveChangesAsync();
@@ -128,11 +120,7 @@ namespace ContosoUniversity.Controllers
                     "Try again, and if the problem persists " +
                     "see your system administrator.");
             }
-
-
-
             return View(student);
-            
         }
 
         // GET: Students/Edit/5
@@ -199,15 +187,16 @@ namespace ContosoUniversity.Controllers
             {
                 return NotFound();
             }
+
             if (saveChangesError.GetValueOrDefault())
             {
                 ViewData["ErrorMessage"] =
                     "Delete failed. Try again, and if the problem persists " +
                     "see your system administrator.";
             }
+
             return View(student);
         }
-
         // POST: Students/Delete/5
         [HttpPost, ActionName("Delete")]
         [ValidateAntiForgeryToken]
@@ -222,16 +211,14 @@ namespace ContosoUniversity.Controllers
             try
             {
                 _context.Students.Remove(student);
-                 await _context.SaveChangesAsync();
+                await _context.SaveChangesAsync();
                 return RedirectToAction(nameof(Index));
-
             }
             catch (DbUpdateException /* ex */)
             {
                 //Log the error (uncomment ex variable name and write a log.)
                 return RedirectToAction(nameof(Delete), new { id = id, saveChangesError = true });
             }
-
         }
 
         private bool StudentExists(int id)
